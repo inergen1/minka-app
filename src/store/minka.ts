@@ -31,8 +31,10 @@ interface Actions {
   setRating: (area: string, v: number) => void;
   setVision: (area: string, text: string) => void;
   addHabit: (h: Omit<Habit, "id">) => string;
+  updateHabit: (id: string, patch: Partial<Habit>) => void;
   removeHabit: (id: string) => void;
   addGoal: (g: Omit<Goal, "id">) => string;
+  updateGoal: (id: string, patch: Partial<Goal>) => void;
   updateMetric: (id: string, cur: number) => void;
   removeGoal: (id: string) => void;
   addTask: (t: Omit<Task, "id">) => string;
@@ -70,6 +72,7 @@ export const useMinka = create<Data & Actions>()(
         set({ habits: [...get().habits, { ...h, id }], logs: { ...get().logs, [id]: {} } });
         return id;
       },
+      updateHabit: (id, patch) => set({ habits: get().habits.map((h) => (h.id === id ? { ...h, ...patch } : h)) }),
       removeHabit: (id) => {
         const logs = { ...get().logs };
         delete logs[id];
@@ -80,6 +83,7 @@ export const useMinka = create<Data & Actions>()(
         set({ goals: [...get().goals, { ...g, id }] });
         return id;
       },
+      updateGoal: (id, patch) => set({ goals: get().goals.map((g) => (g.id === id ? { ...g, ...patch } : g)) }),
       updateMetric: (id, cur) =>
         set({ goals: get().goals.map((g) => (g.id === id && g.metric ? { ...g, metric: { ...g.metric, cur: Math.max(0, cur) } } : g)) }),
       removeGoal: (id) => {
@@ -120,21 +124,23 @@ export const useMinka = create<Data & Actions>()(
 /** Non-persisted UI state shared across screens. */
 interface UI {
   quickAdd: null | "habit" | "goal" | "task";
+  editId: string | null;
   toast: string | null;
   habitSel: string | null;
   selectHabit: (id: string) => void;
-  openQuickAdd: (tab?: "habit" | "goal" | "task") => void;
+  openQuickAdd: (tab?: "habit" | "goal" | "task", editId?: string) => void;
   closeQuickAdd: () => void;
   showToast: (msg: string) => void;
 }
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 export const useUI = create<UI>()((set) => ({
   quickAdd: null,
+  editId: null,
   toast: null,
   habitSel: null,
   selectHabit: (habitSel) => set({ habitSel }),
-  openQuickAdd: (tab = "habit") => set({ quickAdd: tab }),
-  closeQuickAdd: () => set({ quickAdd: null }),
+  openQuickAdd: (tab = "habit", editId) => set({ quickAdd: tab, editId: editId ?? null }),
+  closeQuickAdd: () => set({ quickAdd: null, editId: null }),
   showToast: (toast) => {
     clearTimeout(toastTimer);
     set({ toast });

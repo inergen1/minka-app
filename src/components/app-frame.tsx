@@ -51,6 +51,9 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     if (theme) r.setAttribute("data-theme", theme);
     else r.removeAttribute("data-theme");
   }, [lang, theme]);
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
+  }, []);
   if (!mounted) return null;
   if (!started) return <Welcome />;
   return (

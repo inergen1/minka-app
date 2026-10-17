@@ -4,7 +4,8 @@ import { AreaIcon, Bar } from "@/components/bits";
 import { Icon } from "@/components/icon";
 import { num } from "@/lib/dates";
 import { areaProgress } from "@/lib/goals";
-import { cvar, pct, useT } from "@/lib/use-t";
+import { ratingBefore } from "@/lib/ratings";
+import { cvar, pct, today, useT } from "@/lib/use-t";
 import type { Area } from "@/lib/types";
 import { useMinka } from "@/store/minka";
 import { GoalNode } from "./goals";
@@ -75,8 +76,9 @@ function AreaDetail({ area: a, onBack }: { area: Area; onBack: () => void }) {
 
 export function AreasView() {
   const { t, L, lang } = useT();
-  const { areas, goals, tasks, habits } = useMinka();
+  const { areas: stored, goals, tasks, habits, reviews } = useMinka();
   const [sel, setSel] = useState<string | null>(null);
+  const areas = stored.map((a) => ({ ...a, before: ratingBefore(reviews, a.id, today(), a.before) }));
   const selected = areas.find((a) => a.id === sel);
   if (selected) return <AreaDetail area={selected} onBack={() => setSel(null)} />;
   const weak = [...areas].sort((a, b) => a.now - b.now)[0];

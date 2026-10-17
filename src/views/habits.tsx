@@ -67,6 +67,7 @@ function HabitDetail({ habit: h }: { habit: Habit }) {
   const { t, L, lang } = useT();
   const { logs, areas, goals, tasks, removeHabit } = useMinka();
   const [armed, setArmed] = useState(false);
+  const edit = useUI((s) => s.openQuickAdd);
   const d = today();
   const g = goals.find((x) => x.id === h.goal);
   const freq = h.freq?.kind === "days" ? h.freq.days.map((x) => t.weekdaysShort[x]).join(lang === "ar" ? "، " : ", ") : t.daily;
@@ -97,7 +98,8 @@ function HabitDetail({ habit: h }: { habit: Habit }) {
           </div>
         </div>
       )}
-      <div style={{ marginTop: 16 }}>
+      <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button className="btn ghost small" onClick={() => edit("habit", h.id)}><Icon name="pencil" />{t.edit}</button>
         <button className="btn ghost small" style={{ color: "var(--danger)" }} onClick={() => (armed ? removeHabit(h.id) : setArmed(true))} onBlur={() => setArmed(false)}>
           <Icon name="trash" />{armed ? t.confirmDelete : t.archive}
         </button>

@@ -1,7 +1,7 @@
 import {
   ArrowLeft, ArrowRight, Book, BookOpen, Briefcase, CalendarDays, Check, ChevronLeft, ChevronRight, CircleCheck, CircleDot,
   ClipboardCheck, Clock, CloudSun, Compass, Download, Feather, Flag, Flame, Footprints, GlassWater, GraduationCap, GripVertical,
-  HeartPulse, Languages, Minus, Moon, MoonStar, MousePointerClick, Palette, Phone, Plus, Quote, Receipt, Repeat, RotateCcw,
+  HeartPulse, Languages, Minus, Moon, MoonStar, MousePointerClick, Palette, Pencil, Phone, Plus, Quote, Receipt, Repeat, RotateCcw,
   Settings, Smartphone, Sparkles, Sun, SunMedium, Sunrise, Sunset, Target, Trash2, Users, Wallet, Wind, X, type LucideIcon,
 } from "lucide-react";
 
@@ -12,7 +12,7 @@ const MAP: Record<string, LucideIcon> = {
   compass: Compass, download: Download, feather: Feather, flag: Flag, flame: Flame, footprints: Footprints,
   "glass-water": GlassWater, "graduation-cap": GraduationCap, "grip-vertical": GripVertical, "heart-pulse": HeartPulse,
   languages: Languages, minus: Minus, moon: Moon, "moon-star": MoonStar, "mouse-pointer-click": MousePointerClick,
-  palette: Palette, phone: Phone, plus: Plus, quote: Quote, receipt: Receipt, repeat: Repeat, "rotate-ccw": RotateCcw,
+  palette: Palette, pencil: Pencil, phone: Phone, plus: Plus, quote: Quote, receipt: Receipt, repeat: Repeat, "rotate-ccw": RotateCcw,
   settings: Settings, smartphone: Smartphone, sparkles: Sparkles, sun: Sun, "sun-medium": SunMedium, sunrise: Sunrise,
   sunset: Sunset, target: Target, trash: Trash2, users: Users, wallet: Wallet, wind: Wind, x: X,
 };

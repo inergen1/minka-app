@@ -13,6 +13,7 @@ export function GoalNode({ goal: g, depth, defaultOpen = false }: { goal: Goal; 
   const { goals, tasks, areas, updateMetric, removeGoal } = useMinka();
   const [open, setOpen] = useState(defaultOpen);
   const [armed, setArmed] = useState(false);
+  const edit = useUI((s) => s.openQuickAdd);
   const ks = goals.filter((x) => x.parent === g.id), ts = tasks.filter((x) => x.goal === g.id);
   const p = progress(g, goals, tasks);
   const area = areas.find((a) => a.id === g.area);
@@ -48,6 +49,7 @@ export function GoalNode({ goal: g, depth, defaultOpen = false }: { goal: Goal; 
               <button className="icon-btn" style={{ width: 30, height: 30 }} onClick={() => updateMetric(g.id, g.metric!.cur + 1)} aria-label="+1"><Icon name="plus" /></button>
             </span>
           )}
+          <button className="btn ghost small" onClick={() => edit("goal", g.id)}><Icon name="pencil" />{t.edit}</button>
           <button className="btn ghost small" style={{ color: "var(--danger)" }} onClick={() => (armed ? removeGoal(g.id) : setArmed(true))} onBlur={() => setArmed(false)}>
             <Icon name="trash" />{armed ? t.confirmDelete : t.deleteGoal}
           </button>

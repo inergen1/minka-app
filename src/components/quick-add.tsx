@@ -5,21 +5,26 @@ import { addDays, key } from "@/lib/dates";
 import { today, useT } from "@/lib/use-t";
 import type { Habit, Slot } from "@/lib/types";
 import { useMinka, useUI } from "@/store/minka";
-import { Icon } from "./icon";
+import { ICON_CHOICES, Icon } from "./icon";
 
 const SLOTS: Slot[] = ["fajr", "morning", "dhuhr", "asr", "maghrib", "night", "anytime"];
 const AREA_ICON: Record<string, string> = { faith: "moon-star", spirit: "sparkles", health: "heart-pulse", work: "target", wealth: "receipt", family: "phone", growth: "book", leisure: "feather" };
 
 export function QuickAdd() {
-  const { t, L } = useT();
+  const { t, L, lang } = useT();
   const router = useRouter();
   const tab = useUI((s) => s.quickAdd)!;
+  const editId = useUI((s) => s.editId);
   const open = useUI((s) => s.openQuickAdd);
   const close = useUI((s) => s.closeQuickAdd);
   const toast = useUI((s) => s.showToast);
-  const { areas, goals, addHabit, addGoal, addTask } = useMinka();
-  const [days, setDays] = useState([6, 0, 1, 2, 3, 4, 5]);
-  const [kind, setKind] = useState<Habit["type"]>("check");
+  const { areas, habits, goals, addHabit, addGoal, addTask, updateHabit, updateGoal } = useMinka();
+  const eh = tab === "habit" ? habits.find((h) => h.id === editId) : undefined;
+  const eg = tab === "goal" ? goals.find((g) => g.id === editId) : undefined;
+  const editing = !!(eh || eg);
+  const [days, setDays] = useState(eh?.freq?.kind === "days" ? eh.freq.days : [6, 0, 1, 2, 3, 4, 5]);
+  const [kind, setKind] = useState<Habit["type"]>(eh?.type ?? "check");
+  const [icon, setIcon] = useState<string | null>(eh?.icon ?? null);
   const nameRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     nameRef.current?.focus();
@@ -34,83 +39,93 @@ export function QuickAdd() {
     const s = (k: string) => String(f.get(k) ?? "").trim();
     const name = s("name");
     if (!name) return nameRef.current?.focus();
-    const title = { ar: name, en: name };
+    // When editing, only the current language's text changes.
+    const txt = (v: string, old?: { ar: string; en: string } | null) => (old ? { ...old, [lang]: v } : { ar: v, en: v });
+    const title = txt(name, eh?.name ?? eg?.title);
     if (tab === "habit") {
       const area = s("area");
-      addHabit({
-        area, slot: s("slot") as Slot, icon: AREA_ICON[area] ?? "circle-dot", name: title, type: kind,
+      const h = {
+        area, slot: s("slot") as Slot, icon: icon ?? AREA_ICON[area] ?? "circle-dot", name: title, type: kind,
         target: kind === "check" ? undefined : Math.max(1, Number(s("target")) || 1),
-        unit: kind === "duration" ? { ar: "دقيقة", en: "min" } : kind === "count" ? { ar: s("unit"), en: s("unit") } : undefined,
-        freq: days.length === 7 ? { kind: "daily" } : { kind: "days", days: [...days] },
+        unit: kind === "duration" ? { ar: "دقيقة", en: "min" } : kind === "count" ? txt(s("unit"), eh?.unit) : undefined,
+        freq: days.length === 7 ? { kind: "daily" as const } : { kind: "days" as const, days: [...days] },
         goal: s("goal") || null,
-      });
-      router.push("/habits");
+      };
+      if (eh) updateHabit(eh.id, h);
+      else { addHabit(h); router.push("/habits"); }
     } else if (tab === "goal") {
       const parent = s("parent") || undefined;
       const m = Number(s("metric"));
-      addGoal({
-        parent, area: parent ? goals.find((g) => g.id === parent)!.area : s("area"), horizon: s("horizon") as "year",
-        start: key(today()), due: s("due") || key(addDays(today(), 90)), title,
-        why: s("why") ? { ar: s("why"), en: s("why") } : null,
-        metric: m > 0 ? { cur: 0, target: m, unit: { ar: s("unit"), en: s("unit") } } : undefined,
-      });
-      router.push("/goals");
+      const g = {
+        parent, area: parent ? goals.find((x) => x.id === parent)!.area : s("area"), horizon: s("horizon") as "year",
+        start: eg?.start ?? key(today()), due: s("due") || key(addDays(today(), 90)), title,
+        why: s("why") ? txt(s("why"), eg?.why) : null,
+        metric: m > 0 ? { cur: eg?.metric?.cur ?? 0, target: m, unit: txt(s("unit"), eg?.metric?.unit) } : undefined,
+      };
+      if (eg) updateGoal(eg.id, g);
+      else { addGoal(g); router.push("/goals"); }
     } else {
       const goal = s("goal") || null;
       addTask({ goal, area: goal ? undefined : s("area"), title, done: false, due: s("due") || undefined });
     }
     close();
-    toast(t.added);
+    toast(editing ? t.saved : t.added);
   };
 
   const areaSel = (
     <div className="field"><label htmlFor="f-area">{t.area}</label>
-      <select id="f-area" name="area">{areas.map((a) => <option key={a.id} value={a.id}>{L(a.name)}</option>)}</select></div>
+      <select id="f-area" name="area" defaultValue={eh?.area ?? eg?.area}>{areas.map((a) => <option key={a.id} value={a.id}>{L(a.name)}</option>)}</select></div>
   );
-  const goalOpts = [<option key="" value="">{t.none}</option>, ...goals.map((g) => <option key={g.id} value={g.id}>{g.parent ? "— " : ""}{L(g.title)}</option>)];
+  // A goal cannot become its own parent or a child of its sub-goals.
+  const blocked = new Set<string>();
+  if (eg) { const walk = (id: string) => { blocked.add(id); goals.filter((g) => g.parent === id).forEach((g) => walk(g.id)); }; walk(eg.id); }
+  const goalOpts = [<option key="" value="">{t.none}</option>, ...goals.filter((g) => !blocked.has(g.id)).map((g) => <option key={g.id} value={g.id}>{g.parent ? "— " : ""}{L(g.title)}</option>)];
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <form className="modal" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="qa-title" key={tab}>
         <div className="modal-head">
-          <h2 id="qa-title">{t.qa}</h2>
+          <h2 id="qa-title">{editing ? t.editTitle : t.qa}</h2>
           <button type="button" className="icon-btn" onClick={close} aria-label={t.cancel}><Icon name="x" /></button>
         </div>
-        <div className="seg" role="group">
+        {!editing && <div className="seg" role="group">
           {(["habit", "goal", "task"] as const).map((x) => (
             <button type="button" key={x} aria-pressed={tab === x} onClick={() => open(x)}>{t[x]}</button>
           ))}
-        </div>
+        </div>}
         <div className="form-grid">
           <div className="field full"><label htmlFor="f-name">{t.name}</label>
-            <input id="f-name" name="name" ref={nameRef} required placeholder={tab === "habit" ? t.phHabit : tab === "goal" ? t.phGoal : t.phTask} /></div>
+            <input id="f-name" name="name" ref={nameRef} required defaultValue={L(eh?.name ?? eg?.title)} placeholder={tab === "habit" ? t.phHabit : tab === "goal" ? t.phGoal : t.phTask} /></div>
           {tab === "habit" && <>
             {areaSel}
             <div className="field"><label htmlFor="f-slot">{t.slot}</label>
-              <select id="f-slot" name="slot">{SLOTS.map((k) => <option key={k} value={k}>{t.slots[k]}</option>)}</select></div>
+              <select id="f-slot" name="slot" defaultValue={eh?.slot}>{SLOTS.map((k) => <option key={k} value={k}>{t.slots[k]}</option>)}</select></div>
             <div className="field"><label htmlFor="f-kind">{t.kind}</label>
               <select id="f-kind" value={kind} onChange={(e) => setKind(e.target.value as Habit["type"])}>
                 <option value="check">{t.check}</option><option value="count">{t.count}</option><option value="duration">{t.duration}</option>
               </select></div>
-            {kind !== "check" && <div className="field"><label htmlFor="f-target">{t.targetV}</label><input id="f-target" name="target" type="number" min="1" defaultValue={kind === "duration" ? 15 : 3} /></div>}
-            {kind === "count" && <div className="field"><label htmlFor="f-unit">{t.unit}</label><input id="f-unit" name="unit" /></div>}
+            {kind !== "check" && <div className="field"><label htmlFor="f-target">{t.targetV}</label><input id="f-target" name="target" type="number" min="1" defaultValue={eh?.target ?? (kind === "duration" ? 15 : 3)} /></div>}
+            {kind === "count" && <div className="field"><label htmlFor="f-unit">{t.unit}</label><input id="f-unit" name="unit" defaultValue={L(eh?.unit)} /></div>}
+            <div className="field full"><label>{t.icon}</label>
+              <div className="daypick">{ICON_CHOICES.map((ic) => (
+                <button type="button" key={ic} aria-label={ic} aria-pressed={icon === ic} onClick={() => setIcon(ic)}><Icon name={ic} /></button>))}</div></div>
             <div className="field full"><label>{t.freq}</label>
               <div className="daypick">{[6, 0, 1, 2, 3, 4, 5].map((d) => (
                 <button type="button" key={d} aria-pressed={days.includes(d)}
                   onClick={() => setDays((ds) => (ds.includes(d) ? (ds.length > 1 ? ds.filter((x) => x !== d) : ds) : [...ds, d]))}>
                   {t.weekdaysShort[d]}
                 </button>))}</div></div>
-            <div className="field full"><label htmlFor="f-goal">{t.linkGoal}</label><select id="f-goal" name="goal">{goalOpts}</select></div>
+            <div className="field full"><label htmlFor="f-goal">{t.linkGoal}</label><select id="f-goal" name="goal" defaultValue={eh?.goal ?? ""}>{goalOpts}</select></div>
           </>}
           {tab === "goal" && <>
             {areaSel}
-            <div className="field"><label htmlFor="f-parent">{t.parent}</label><select id="f-parent" name="parent">{goalOpts}</select></div>
-            <div className="field full"><label htmlFor="f-why">{t.whyQ}</label><textarea id="f-why" name="why" /></div>
+            <div className="field"><label htmlFor="f-parent">{t.parent}</label><select id="f-parent" name="parent" defaultValue={eg?.parent ?? ""}>{goalOpts}</select></div>
+            <div className="field full"><label htmlFor="f-why">{t.whyQ}</label><textarea id="f-why" name="why" defaultValue={L(eg?.why)} /></div>
             <div className="field"><label htmlFor="f-horizon">{t.horizonL}</label>
-              <select id="f-horizon" name="horizon" defaultValue="quarter">{(["year", "quarter", "month"] as const).map((h) => <option key={h} value={h}>{t.horizon[h]}</option>)}</select></div>
-            <div className="field"><label htmlFor="f-due">{t.dueDate}</label><input id="f-due" name="due" type="date" defaultValue={key(addDays(today(), 90))} /></div>
-            <div className="field"><label htmlFor="f-metric">{t.metricT}</label><input id="f-metric" name="metric" type="number" min="1" placeholder="10" /></div>
-            <div className="field"><label htmlFor="f-unit">{t.unit}</label><input id="f-unit" name="unit" /></div>
+              <select id="f-horizon" name="horizon" defaultValue={eg?.horizon ?? "quarter"}>{(["year", "quarter", "month"] as const).map((h) => <option key={h} value={h}>{t.horizon[h]}</option>)}</select></div>
+            <div className="field"><label htmlFor="f-due">{t.dueDate}</label><input id="f-due" name="due" type="date" defaultValue={eg?.due ?? key(addDays(today(), 90))} /></div>
+            <div className="field"><label htmlFor="f-metric">{t.metricT}</label><input id="f-metric" name="metric" type="number" min="1" placeholder="10" defaultValue={eg?.metric?.target} /></div>
+            <div className="field"><label htmlFor="f-unit">{t.unit}</label><input id="f-unit" name="unit" defaultValue={L(eg?.metric?.unit)} /></div>
           </>}
           {tab === "task" && <>
             <div className="field"><label htmlFor="f-goal">{t.linkGoal}</label><select id="f-goal" name="goal">{goalOpts}</select></div>
