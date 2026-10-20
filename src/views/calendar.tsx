@@ -5,33 +5,245 @@ import { blocksOn } from "@/lib/blocks";
 import { addDays, daysBetween, fmt, hijri, hijriDay, key, nowHour, num, parse, time, weekStart } from "@/lib/dates";
 import { taskArea } from "@/lib/goals";
 import { isDue } from "@/lib/habits";
+import { scheduleBlockReminder } from "@/lib/notify";
 import { cvar, today, useT } from "@/lib/use-t";
 import { useMinka, useUI } from "@/store/minka";
+import type { Block, Task } from "@/lib/types";
 
 const H0 = 5, H1 = 24, HP = 48;
-type View = "day" | "week" | "month";
+type CalView = "day" | "week" | "month" | "list" | "kanban";
+type Filter = "all" | "habits" | "goals" | "tasks";
 
+// ---------- Event detail modal ----------
+function EventModal({ block, onClose }: { block: Block; onClose: () => void }) {
+  const { t, L, lang } = useT();
+  const { tasks, goals, toggleTask, removeBlock, unschedule, moveBlock } = useMinka();
+  const openQA = useUI((s) => s.openQuickAdd);
+  const task = block.task ? tasks.find((x) => x.id === block.task) : null;
+  const [armed, setArmed] = useState(false);
+
+  const handleDone = () => {
+    if (task) toggleTask(task.id);
+  };
+
+  const handleDelete = () => {
+    if (armed) {
+      if (block.task) unschedule(block.task);
+      else removeBlock(block.id);
+      onClose();
+    } else setArmed(true);
+  };
+
+  const isDone = task?.done ?? false;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box event-modal" style={cvar(block.area)} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <span className="dot" />
+          <h3 style={{ flex: 1 }}>{L(block.title)}</h3>
+          <button className="icon-btn" onClick={onClose} aria-label={t.cancel}><Icon name="x" /></button>
+        </div>
+        <div className="event-meta num">
+          <Icon name="clock" />
+          <span>{time(lang, block.s)} – {time(lang, block.s + block.d)}</span>
+          {block.date && <span className="muted">· {fmt(lang, parse(block.date), { weekday: "short", day: "numeric", month: "short" })}</span>}
+        </div>
+        {task && (
+          <button className={`event-done-btn${isDone ? " done" : ""}`} onClick={handleDone}>
+            <span className="chk-box">{isDone && <Icon name="check" />}</span>
+            <span>{isDone ? t.markUndone : t.markDone}</span>
+          </button>
+        )}
+        <div className="event-actions">
+          {task && (
+            <button className="btn ghost small" onClick={() => { openQA("task", task.id); onClose(); }}>
+              <Icon name="pencil" />{t.edit}
+            </button>
+          )}
+          <button className="btn ghost small" style={{ color: "var(--danger)" }} onClick={handleDelete} onBlur={() => setArmed(false)}>
+            <Icon name="trash" />{armed ? t.confirmDelete : t.unschedule}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- List view ----------
+function ListView({ filter, offset }: { filter: Filter; offset: number }) {
+  const { t, L, lang } = useT();
+  const { tasks, goals, habits, blocks, toggleTask } = useMinka();
+  const d0 = today();
+
+  // Show 14 days from offset
+  const days = Array.from({ length: 14 }, (_, i) => addDays(d0, i + offset * 7));
+
+  return (
+    <div className="cal-list">
+      {days.map((d) => {
+        const k = key(d);
+        const isT = +d === +d0;
+        const dayBlocks = (filter === "habits" ? [] : blocksOn(blocks, d));
+        const dueHabits = filter !== "tasks" && filter !== "goals"
+          ? habits.filter((h) => isDue(h, d))
+          : [];
+
+        if (dayBlocks.length === 0 && dueHabits.length === 0) return null;
+        return (
+          <div key={k} className="cal-list-day">
+            <div className={`list-day-hd${isT ? " is-today" : ""}`}>
+              <b>{fmt(lang, d, { weekday: "long", day: "numeric", month: "long" })}</b>
+              <small className="num">{hijriDay(d)} {hijri(lang, d, { month: "short" })}</small>
+            </div>
+            {dueHabits.length > 0 && (
+              <div className="list-habits-row">
+                {dueHabits.map((h) => (
+                  <span key={h.id} className="list-habit-chip" style={cvar(h.area)}>
+                    <span className="dot" />{L(h.name)}
+                  </span>
+                ))}
+              </div>
+            )}
+            {dayBlocks.map((b) => {
+              const task = b.task ? tasks.find((x) => x.id === b.task) : null;
+              return (
+                <div key={b.id} className={`list-item${task?.done ? " done" : ""}`} style={cvar(b.area)}>
+                  <div className="list-item-color" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="list-item-title">{L(b.title)}</div>
+                    <div className="list-item-meta num">{time(lang, b.s)} – {time(lang, b.s + b.d)}</div>
+                  </div>
+                  {task && (
+                    <button className={`list-done-btn${task.done ? " on" : ""}`} onClick={() => toggleTask(task.id)} aria-label={task.done ? t.markUndone : t.markDone}>
+                      {task.done ? <Icon name="check-circle" /> : <Icon name="circle" />}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------- Kanban view ----------
+function KanbanView({ filter }: { filter: Filter }) {
+  const { t, L, lang } = useT();
+  const { tasks, goals, habits, blocks, toggleTask, schedule, unschedule } = useMinka();
+  const d0 = today(), k0 = key(d0);
+  const toast = useUI((s) => s.showToast);
+  const openQA = useUI((s) => s.openQuickAdd);
+
+  const todayBlocks = blocksOn(blocks, d0);
+  const scheduledTodayIds = new Set(todayBlocks.map((b) => b.task).filter(Boolean));
+
+  const allTasks = filter === "habits" || filter === "goals" ? [] : tasks;
+  const backlog = allTasks.filter((x) => !x.done && !scheduledTodayIds.has(x.id));
+  const todayTasks = allTasks.filter((x) => !x.done && scheduledTodayIds.has(x.id));
+  const doneTasks = allTasks.filter((x) => x.done).slice(0, 10);
+  const todayHabits = filter !== "tasks" && filter !== "goals"
+    ? habits.filter((h) => isDue(h, d0))
+    : [];
+
+  const handleDrop = (e: React.DragEvent, col: "today" | "backlog") => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData("text/plain");
+    if (!id) return;
+    if (col === "today") {
+      schedule(id, k0, 9);
+      toast(`${t.scheduled}`);
+    } else {
+      unschedule(id);
+    }
+  };
+
+  const TaskCard = ({ task: x }: { task: Task }) => {
+    const g = goals.find((y) => y.id === x.goal);
+    return (
+      <div className="kan-card" style={cvar(taskArea(x, goals))} draggable
+        onDragStart={(e) => e.dataTransfer.setData("text/plain", x.id)}>
+        <div className="kan-card-row">
+          <button className={`kan-check${x.done ? " on" : ""}`} onClick={() => toggleTask(x.id)} aria-label={x.done ? t.markUndone : t.markDone}>
+            {x.done ? <Icon name="check-circle" /> : <Icon name="circle" />}
+          </button>
+          <span className="kan-title">{L(x.title)}</span>
+          <button className="icon-btn small" onClick={() => openQA("task", x.id)} aria-label={t.edit}><Icon name="pencil" /></button>
+        </div>
+        {g && <div className="kan-meta"><span className="dot" />{L(g.title)}</div>}
+      </div>
+    );
+  };
+
+  return (
+    <div className="cal-kanban">
+      {/* Backlog */}
+      <div className="kan-col" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, "backlog")}>
+        <div className="kan-col-hd"><span>{t.backlogCol}</span><span className="num muted">{num(lang, backlog.length)}</span></div>
+        {backlog.map((x) => <TaskCard key={x.id} task={x} />)}
+        {backlog.length === 0 && <p className="kan-empty">{t.allSched}</p>}
+      </div>
+      {/* Today */}
+      <div className="kan-col today" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, "today")}>
+        <div className="kan-col-hd"><span>{t.todayCol}</span><span className="num muted">{num(lang, todayTasks.length + todayHabits.length)}</span></div>
+        {todayHabits.map((h) => (
+          <div key={h.id} className="kan-card habit-card" style={cvar(h.area)}>
+            <span className="dot" /><span className="kan-title">{L(h.name)}</span>
+          </div>
+        ))}
+        {todayTasks.map((x) => <TaskCard key={x.id} task={x} />)}
+        {todayTasks.length === 0 && todayHabits.length === 0 && <p className="kan-empty muted">—</p>}
+      </div>
+      {/* Done */}
+      <div className="kan-col done-col">
+        <div className="kan-col-hd"><span>{t.doneCol}</span><span className="num muted">{num(lang, doneTasks.length)}</span></div>
+        {doneTasks.map((x) => <TaskCard key={x.id} task={x} />)}
+        {doneTasks.length === 0 && <p className="kan-empty muted">—</p>}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Main CalendarView ----------
 export function CalendarView() {
   const { t, L, lang } = useT();
-  const { tasks, goals, blocks, habits, schedule, unschedule } = useMinka();
+  const { tasks, goals, habits, blocks, schedule, unschedule, moveBlock, toggleTask } = useMinka();
   const toast = useUI((s) => s.showToast);
-  const [view, setView] = useState<View>("week");
+  const [view, setView] = useState<CalView>("week");
   const [offset, setOffset] = useState(0);
   const [pick, setPick] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
+  const [selBlock, setSelBlock] = useState<Block | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [draggingBlock, setDraggingBlock] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const d0 = today();
 
-  useEffect(() => { if (scroller.current) scroller.current.scrollTop = (7 - H0) * HP; }, [view]);
+  useEffect(() => {
+    if (scroller.current && (view === "day" || view === "week")) {
+      scroller.current.scrollTop = (7 - H0) * HP;
+    }
+  }, [view]);
 
   const hourAt = (e: React.MouseEvent | React.DragEvent) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     return Math.min(H1 - 1, H0 + Math.round(((e.clientY - r.top) / HP) * 2) / 2);
   };
+
   const place = (id: string, date: string, hour: number) => {
     schedule(id, date, hour);
     setPick(null);
     toast(`${t.scheduled} · ${time(lang, hour)}`);
+    const b = blocks.find((x) => x.task === id);
+    if (b) scheduleBlockReminder(b.id, L(b.title), date, hour);
+  };
+
+  const placeBlock = (blockId: string, date: string, hour: number) => {
+    moveBlock(blockId, date, hour);
+    setDraggingBlock(null);
+    toast(t.moveBlock);
   };
 
   let days: Date[] | null = null, label = "", hlabel = "";
@@ -45,11 +257,27 @@ export function CalendarView() {
     days = [d];
     label = fmt(lang, d, { weekday: "long", day: "numeric", month: "long" });
     hlabel = hijri(lang, d, { day: "numeric", month: "long", year: "numeric" });
-  } else {
+  } else if (view === "month") {
     const m = new Date(d0.getFullYear(), d0.getMonth() + offset, 1);
     label = fmt(lang, m, { month: "long", year: "numeric" });
     hlabel = `${hijri(lang, m, { month: "long" })} – ${hijri(lang, new Date(m.getFullYear(), m.getMonth() + 1, 0), { month: "long", year: "numeric" })}`;
+  } else {
+    label = fmt(lang, d0, { month: "long", year: "numeric" });
+    hlabel = hijri(lang, d0, { month: "long", year: "numeric" });
   }
+
+  // Filter blocks for display
+  const visibleBlocks = (d: Date) => {
+    const bl = blocksOn(blocks, d);
+    if (filter === "all") return bl;
+    if (filter === "habits") return [];
+    if (filter === "tasks") return bl.filter((b) => !!b.task);
+    if (filter === "goals") return bl.filter((b) => {
+      const task = b.task ? tasks.find((x) => x.id === b.task) : null;
+      return task?.goal != null;
+    });
+    return bl;
+  };
 
   const unsched = tasks.filter((x) => !x.done && !blocks.some((b) => b.task === x.id));
   const pickT = tasks.find((x) => x.id === pick);
@@ -64,25 +292,60 @@ export function CalendarView() {
             <div className="dn">{fmt(lang, d, { weekday: ds.length === 1 ? "long" : "short" })}</div>
             <div className="dd num"><span>{fmt(lang, d, { day: "numeric" })}</span></div>
             <div className="hd num">{hijriDay(d)} {hijri(lang, d, { month: "short" })}</div>
-            <span className="hb num">{t.habitsDue(num(lang, habits.filter((h) => isDue(h, d)).length))}</span>
+            {filter !== "tasks" && filter !== "goals" && (
+              <span className="hb num">{t.habitsDue(num(lang, habits.filter((h) => isDue(h, d)).length))}</span>
+            )}
           </div>
         ))}
         <div className="hours">{Array.from({ length: H1 - H0 }, (_, i) => <div key={i} className="hour-l">{i === 0 ? "" : time(lang, H0 + i)}</div>)}</div>
         {ds.map((d) => {
           const k = key(d), isT = +d === +d0;
+          const dayBlocks = visibleBlocks(d);
           return (
-            <div key={k} className={`day-col${isT ? " is-today" : ""}${pick ? " picking" : ""}${over === k ? " drop" : ""}`} style={{ height: (H1 - H0) * HP }}
+            <div key={k} className={`day-col${isT ? " is-today" : ""}${pick ? " picking" : ""}${over === k ? " drop" : ""}`}
+              style={{ height: (H1 - H0) * HP }}
               onClick={(e) => pick && !(e.target as HTMLElement).closest(".blk") && place(pick, k, hourAt(e))}
               onDragOver={(e) => { e.preventDefault(); setOver(k); }}
               onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(null); }}
-              onDrop={(e) => { e.preventDefault(); setOver(null); const id = e.dataTransfer.getData("text/plain"); if (id) place(id, k, hourAt(e)); }}>
-              {blocksOn(blocks, d).filter((b) => b.s + b.d > H0).map((b) => {
+              onDrop={(e) => {
+                e.preventDefault(); setOver(null);
+                const data = e.dataTransfer.getData("text/plain");
+                if (!data) return;
+                const h = hourAt(e);
+                if (data.startsWith("blk:")) {
+                  placeBlock(data.slice(4), k, h);
+                } else {
+                  place(data, k, h);
+                }
+              }}>
+              {dayBlocks.map((b) => {
                 const top = (Math.max(b.s, H0) - H0) * HP, ht = Math.max(22, b.d * HP - 3);
+                const task = b.task ? tasks.find((x) => x.id === b.task) : null;
+                const isDone = task?.done ?? false;
                 return (
-                  <div key={b.id} className={`blk${b.task ? " task-blk" : ""}`} style={{ top, height: ht, ...cvar(b.area) }}
-                    draggable={!!b.task} onDragStart={(e) => b.task && e.dataTransfer.setData("text/plain", b.task)}>
-                    <b>{L(b.title)}</b>{ht > 34 && <span className="num">{time(lang, b.s)} – {time(lang, b.s + b.d)}</span>}
-                    {b.task && <button className="x" onClick={() => unschedule(b.task!)} aria-label={t.unschedule}><Icon name="x" /></button>}
+                  <div key={b.id}
+                    className={`blk${b.task ? " task-blk" : ""}${isDone ? " blk-done" : ""}`}
+                    style={{ top, height: ht, ...cvar(b.area) }}
+                    draggable
+                    onDragStart={(e) => {
+                      if (b.task) {
+                        e.dataTransfer.setData("text/plain", b.task);
+                      } else {
+                        e.dataTransfer.setData("text/plain", "blk:" + b.id);
+                      }
+                      setDraggingBlock(b.id);
+                    }}
+                    onDragEnd={() => setDraggingBlock(null)}
+                    onClick={(e) => { e.stopPropagation(); setSelBlock(b); }}>
+                    {task && (
+                      <button className="blk-done-btn" onClick={(e) => { e.stopPropagation(); toggleTask(task.id); }}
+                        aria-label={isDone ? t.markUndone : t.markDone}>
+                        {isDone ? <Icon name="check-circle" /> : <Icon name="circle" />}
+                      </button>
+                    )}
+                    <b>{L(b.title)}</b>
+                    {ht > 34 && <span className="num">{time(lang, b.s)} – {time(lang, b.s + b.d)}</span>}
+                    {b.task && <button className="x" onClick={(e) => { e.stopPropagation(); unschedule(b.task!); }} aria-label={t.unschedule}><Icon name="x" /></button>}
                   </div>
                 );
               })}
@@ -100,7 +363,7 @@ export function CalendarView() {
     for (let i = 0; i < 42; i++) {
       const d = addDays(start, i);
       if (i === 35 && d.getMonth() !== m.getMonth()) break;
-      const bl = blocksOn(blocks, d).filter((b) => !(b.dows && b.dows.length === 7));
+      const bl = visibleBlocks(d).filter((b) => !(b.dows && b.dows.length === 7));
       cells.push(
         <button key={i} className={`m-cell${d.getMonth() !== m.getMonth() ? " out" : ""}${+d === +d0 ? " is-today" : ""}`}
           onClick={() => { setView("day"); setOffset(daysBetween(d0, d)); }}>
@@ -121,42 +384,96 @@ export function CalendarView() {
   return (
     <>
       <header className="page-head"><div><h1 className="page-title">{t.nav.calendar}</h1><p className="page-sub">{t.calSub}</p></div></header>
+
+      {/* Top bar: navigation + view switcher */}
       <div className="cal-bar">
         <button className="icon-btn" onClick={() => setOffset(offset - 1)} aria-label="Previous"><Icon name={lang === "ar" ? "chevron-right" : "chevron-left"} /></button>
         <button className="icon-btn" onClick={() => setOffset(offset + 1)} aria-label="Next"><Icon name={lang === "ar" ? "chevron-left" : "chevron-right"} /></button>
         <button className="btn" onClick={() => setOffset(0)}>{t.todayBtn}</button>
         <div className="range num">{label}<small>{hlabel}</small></div>
         <div className="seg" role="group">
-          {(["day", "week", "month"] as const).map((v) => <button key={v} aria-pressed={view === v} onClick={() => { setView(v); setOffset(0); }}>{t[v]}</button>)}
+          {(["day", "week", "month", "listView", "kanban"] as const).map((v) => {
+            const label = v === "listView" ? t.listView : v === "kanban" ? t.kanban : t[v as "day" | "week" | "month"];
+            const active = v === "listView" ? view === "list" : v === "kanban" ? view === "kanban" : view === v;
+            return (
+              <button key={v} aria-pressed={active} onClick={() => {
+                if (v === "listView") { setView("list"); setOffset(0); }
+                else if (v === "kanban") { setView("kanban"); setOffset(0); }
+                else { setView(v as CalView); setOffset(0); }
+              }}>{label}</button>
+            );
+          })}
         </div>
       </div>
+
+      {/* Filter chips */}
+      <div className="cal-filters">
+        {(["all", "habits", "goals", "tasks"] as const).map((f) => {
+          const labels = { all: t.filterAll, habits: t.filterHabits, goals: t.filterGoals, tasks: t.filterTasks };
+          return (
+            <button key={f} className="chip" aria-pressed={filter === f} onClick={() => setFilter(f)}>
+              {labels[f]}
+            </button>
+          );
+        })}
+      </div>
+
       {pickT && (
         <div className="pick-banner"><Icon name="mouse-pointer-click" /><span style={{ flex: 1 }}>{t.pickFor} {L(pickT.title)}</span>
           <button className="btn ghost small" onClick={() => setPick(null)}>{t.cancel}</button></div>
       )}
-      <div className="cal-layout">
-        <section className="panel cal">{days ? timeGrid(days) : monthGrid()}</section>
-        <aside className="panel">
-          <div className="panel-head"><h2>{t.unsched}</h2><span className="muted small num">{num(lang, unsched.length)}</span></div>
-          <p className="small muted" style={{ marginBottom: 12 }}>{t.dragHint}</p>
-          <div className="unsched">
-            {unsched.length ? unsched.map((x) => {
-              const g = goals.find((y) => y.id === x.goal);
-              return (
-                <button key={x.id} className="u-task" draggable style={cvar(taskArea(x, goals))} aria-pressed={pick === x.id}
-                  onDragStart={(e) => { e.dataTransfer.setData("text/plain", x.id); e.dataTransfer.effectAllowed = "move"; }}
-                  onClick={() => { setPick(pick === x.id ? null : x.id); if (view === "month") setView("week"); }}>
-                  <span className="grip"><Icon name="grip-vertical" /></span>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="task-title">{L(x.title)}</div>
-                    <div className="task-meta"><span className="dot" />{g ? L(g.title) : x.due ? fmt(lang, parse(x.due), { day: "numeric", month: "short" }) : ""}</div>
-                  </div>
-                </button>
-              );
-            }) : <p className="empty">{t.allSched}</p>}
-          </div>
-        </aside>
-      </div>
+
+      {/* Content */}
+      {view === "list" ? (
+        <div className="cal-list-layout">
+          <ListView filter={filter} offset={offset} />
+          <aside className="panel">
+            <div className="panel-head"><h2>{t.unsched}</h2><span className="muted small num">{num(lang, unsched.length)}</span></div>
+            <p className="small muted" style={{ marginBottom: 12 }}>{t.dragHint}</p>
+            <UnschedSidebar tasks={unsched} goals={goals} pick={pick} setPick={setPick} setView={setView} />
+          </aside>
+        </div>
+      ) : view === "kanban" ? (
+        <KanbanView filter={filter} />
+      ) : (
+        <div className="cal-layout">
+          <section className="panel cal">{days ? timeGrid(days) : monthGrid()}</section>
+          <aside className="panel">
+            <div className="panel-head"><h2>{t.unsched}</h2><span className="muted small num">{num(lang, unsched.length)}</span></div>
+            <p className="small muted" style={{ marginBottom: 12 }}>{t.dragHint}</p>
+            <UnschedSidebar tasks={unsched} goals={goals} pick={pick} setPick={setPick} setView={setView} />
+          </aside>
+        </div>
+      )}
+
+      {selBlock && <EventModal block={selBlock} onClose={() => setSelBlock(null)} />}
     </>
+  );
+}
+
+import type { Goal as GoalType } from "@/lib/types";
+
+function UnschedSidebar({ tasks, goals, pick, setPick, setView }: {
+  tasks: Task[]; goals: GoalType[]; pick: string | null;
+  setPick: (id: string | null) => void; setView: (v: CalView) => void;
+}) {
+  const { t, L, lang } = useT();
+  return (
+    <div className="unsched">
+      {tasks.length ? tasks.map((x) => {
+        const g = goals.find((y) => y.id === x.goal);
+        return (
+          <button key={x.id} className="u-task" draggable style={cvar(taskArea(x, goals))} aria-pressed={pick === x.id}
+            onDragStart={(e) => { e.dataTransfer.setData("text/plain", x.id); e.dataTransfer.effectAllowed = "move"; }}
+            onClick={() => { setPick(pick === x.id ? null : x.id); if (window.innerWidth > 900) setView("week"); }}>
+            <span className="grip"><Icon name="grip-vertical" /></span>
+            <div style={{ minWidth: 0 }}>
+              <div className="task-title">{L(x.title)}</div>
+              <div className="task-meta"><span className="dot" />{g ? L(g.title) : x.due ? fmt(lang, parse(x.due), { day: "numeric", month: "short" }) : ""}</div>
+            </div>
+          </button>
+        );
+      }) : <p className="empty">{t.allSched}</p>}
+    </div>
   );
 }

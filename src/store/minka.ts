@@ -38,8 +38,12 @@ interface Actions {
   updateMetric: (id: string, cur: number) => void;
   removeGoal: (id: string) => void;
   addTask: (t: Omit<Task, "id">) => string;
+  updateTask: (id: string, patch: Partial<Task>) => void;
+  removeTask: (id: string) => void;
   schedule: (taskId: string, date: string, hour: number) => void;
   unschedule: (taskId: string) => void;
+  moveBlock: (blockId: string, date: string, hour: number) => void;
+  removeBlock: (blockId: string) => void;
   saveReview: (r: Omit<Review, "week">) => void;
 }
 
@@ -104,6 +108,16 @@ export const useMinka = create<Data & Actions>()(
         set({ tasks: [...get().tasks, { ...t, id }] });
         return id;
       },
+      updateTask: (id, patch) => {
+        const { tasks, goals, blocks } = get();
+        const nt = tasks.map((t) => (t.id === id ? { ...t, ...patch } : t));
+        const t = nt.find((x) => x.id === id);
+        if (!t) return;
+        // Keep a scheduled block's title and color in step with its task.
+        const area = t.area ?? goals.find((g) => g.id === t.goal)?.area ?? "work";
+        set({ tasks: nt, blocks: blocks.map((b) => (b.task === id ? { ...b, title: t.title, area } : b)) });
+      },
+      removeTask: (id) => set({ tasks: get().tasks.filter((t) => t.id !== id), blocks: get().blocks.filter((b) => b.task !== id) }),
       schedule: (taskId, date, hour) => {
         const { tasks, goals, blocks } = get();
         const t = tasks.find((x) => x.id === taskId);
@@ -112,6 +126,8 @@ export const useMinka = create<Data & Actions>()(
         set({ blocks: [...blocks.filter((b) => b.task !== taskId), { id: uid("b"), date, s: hour, d: 1, area, title: t.title, task: taskId }] });
       },
       unschedule: (taskId) => set({ blocks: get().blocks.filter((b) => b.task !== taskId) }),
+      moveBlock: (blockId, date, hour) => set({ blocks: get().blocks.map((b) => b.id === blockId ? { ...b, date, s: hour } : b) }),
+      removeBlock: (blockId) => set({ blocks: get().blocks.filter((b) => b.id !== blockId) }),
       saveReview: (r) => {
         const week = key(weekStart(new Date()));
         set({ reviews: [{ ...r, week }, ...get().reviews.filter((x) => x.week !== week)] });

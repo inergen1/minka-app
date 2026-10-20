@@ -62,3 +62,14 @@ export function nextValue(h: Habit, v: number) {
   if (h.type === "count") return v + 1;
   return Math.min(t, v + Math.max(5, Math.round(t / 3 / 5) * 5));
 }
+
+/** Habits whose reminder time passed within the last hour, due today, not done, and not reminded yet. */
+export function dueReminders(habits: Habit[], logs: Logs, now: Date, fired: Set<string>) {
+  const mins = now.getHours() * 60 + now.getMinutes();
+  return habits.filter((h) => {
+    if (!h.remind || fired.has(h.id + key(now)) || !isDue(h, now) || isDone(logs, h, now)) return false;
+    const [hh, mm] = h.remind.split(":").map(Number);
+    const at = hh * 60 + mm;
+    return mins >= at && mins < at + 60;
+  });
+}

@@ -18,10 +18,12 @@ export function QuickAdd() {
   const open = useUI((s) => s.openQuickAdd);
   const close = useUI((s) => s.closeQuickAdd);
   const toast = useUI((s) => s.showToast);
-  const { areas, habits, goals, addHabit, addGoal, addTask, updateHabit, updateGoal } = useMinka();
+  const { areas, habits, goals, tasks, addHabit, addGoal, addTask, updateHabit, updateGoal, updateTask, removeTask } = useMinka();
   const eh = tab === "habit" ? habits.find((h) => h.id === editId) : undefined;
   const eg = tab === "goal" ? goals.find((g) => g.id === editId) : undefined;
-  const editing = !!(eh || eg);
+  const et = tab === "task" ? tasks.find((x) => x.id === editId) : undefined;
+  const editing = !!(eh || eg || et);
+  const [armed, setArmed] = useState(false);
   const [days, setDays] = useState(eh?.freq?.kind === "days" ? eh.freq.days : [6, 0, 1, 2, 3, 4, 5]);
   const [kind, setKind] = useState<Habit["type"]>(eh?.type ?? "check");
   const [icon, setIcon] = useState<string | null>(eh?.icon ?? null);
@@ -41,7 +43,8 @@ export function QuickAdd() {
     if (!name) return nameRef.current?.focus();
     // When editing, only the current language's text changes.
     const txt = (v: string, old?: { ar: string; en: string } | null) => (old ? { ...old, [lang]: v } : { ar: v, en: v });
-    const title = txt(name, eh?.name ?? eg?.title);
+    const title = txt(name, eh?.name ?? eg?.title ?? et?.title);
+    let note = editing ? t.saved : t.added;
     if (tab === "habit") {
       const area = s("area");
       const h = {
@@ -50,7 +53,12 @@ export function QuickAdd() {
         unit: kind === "duration" ? { ar: "دقيقة", en: "min" } : kind === "count" ? txt(s("unit"), eh?.unit) : undefined,
         freq: days.length === 7 ? { kind: "daily" as const } : { kind: "days" as const, days: [...days] },
         goal: s("goal") || null,
+        remind: s("remind") || undefined,
       };
+      if (h.remind && "Notification" in window) {
+        if (Notification.permission === "default") Notification.requestPermission();
+        else if (Notification.permission === "denied") note = t.remindOff;
+      }
       if (eh) updateHabit(eh.id, h);
       else { addHabit(h); router.push("/habits"); }
     } else if (tab === "goal") {
@@ -66,15 +74,17 @@ export function QuickAdd() {
       else { addGoal(g); router.push("/goals"); }
     } else {
       const goal = s("goal") || null;
-      addTask({ goal, area: goal ? undefined : s("area"), title, done: false, due: s("due") || undefined });
+      const x = { goal, area: goal ? undefined : s("area"), title, due: s("due") || undefined };
+      if (et) updateTask(et.id, x);
+      else addTask({ ...x, done: false });
     }
     close();
-    toast(editing ? t.saved : t.added);
+    toast(note);
   };
 
   const areaSel = (
     <div className="field"><label htmlFor="f-area">{t.area}</label>
-      <select id="f-area" name="area" defaultValue={eh?.area ?? eg?.area}>{areas.map((a) => <option key={a.id} value={a.id}>{L(a.name)}</option>)}</select></div>
+      <select id="f-area" name="area" defaultValue={eh?.area ?? eg?.area ?? (et && !et.goal ? et.area : undefined)}>{areas.map((a) => <option key={a.id} value={a.id}>{L(a.name)}</option>)}</select></div>
   );
   // A goal cannot become its own parent or a child of its sub-goals.
   const blocked = new Set<string>();
@@ -95,7 +105,7 @@ export function QuickAdd() {
         </div>}
         <div className="form-grid">
           <div className="field full"><label htmlFor="f-name">{t.name}</label>
-            <input id="f-name" name="name" ref={nameRef} required defaultValue={L(eh?.name ?? eg?.title)} placeholder={tab === "habit" ? t.phHabit : tab === "goal" ? t.phGoal : t.phTask} /></div>
+            <input id="f-name" name="name" ref={nameRef} required defaultValue={L(eh?.name ?? eg?.title ?? et?.title)} placeholder={tab === "habit" ? t.phHabit : tab === "goal" ? t.phGoal : t.phTask} /></div>
           {tab === "habit" && <>
             {areaSel}
             <div className="field"><label htmlFor="f-slot">{t.slot}</label>
@@ -115,7 +125,8 @@ export function QuickAdd() {
                   onClick={() => setDays((ds) => (ds.includes(d) ? (ds.length > 1 ? ds.filter((x) => x !== d) : ds) : [...ds, d]))}>
                   {t.weekdaysShort[d]}
                 </button>))}</div></div>
-            <div className="field full"><label htmlFor="f-goal">{t.linkGoal}</label><select id="f-goal" name="goal" defaultValue={eh?.goal ?? ""}>{goalOpts}</select></div>
+            <div className="field"><label htmlFor="f-goal">{t.linkGoal}</label><select id="f-goal" name="goal" defaultValue={eh?.goal ?? ""}>{goalOpts}</select></div>
+            <div className="field"><label htmlFor="f-remind">{t.remind}</label><input id="f-remind" name="remind" type="time" defaultValue={eh?.remind} /></div>
           </>}
           {tab === "goal" && <>
             {areaSel}
@@ -128,12 +139,15 @@ export function QuickAdd() {
             <div className="field"><label htmlFor="f-unit">{t.unit}</label><input id="f-unit" name="unit" defaultValue={L(eg?.metric?.unit)} /></div>
           </>}
           {tab === "task" && <>
-            <div className="field"><label htmlFor="f-goal">{t.linkGoal}</label><select id="f-goal" name="goal">{goalOpts}</select></div>
+            <div className="field"><label htmlFor="f-goal">{t.linkGoal}</label><select id="f-goal" name="goal" defaultValue={et?.goal ?? ""}>{goalOpts}</select></div>
             {areaSel}
-            <div className="field"><label htmlFor="f-due">{t.dueDate}</label><input id="f-due" name="due" type="date" defaultValue={key(today())} /></div>
+            <div className="field"><label htmlFor="f-due">{t.dueDate}</label><input id="f-due" name="due" type="date" defaultValue={et ? et.due ?? "" : key(today())} /></div>
           </>}
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          {et && <button type="button" className="btn ghost" style={{ color: "var(--danger)", marginInlineEnd: "auto" }}
+            onClick={() => { if (!armed) return setArmed(true); removeTask(et.id); close(); }} onBlur={() => setArmed(false)}>
+            <Icon name="trash" />{armed ? t.confirmDelete : t.deleteTask}</button>}
           <button type="button" className="btn ghost" onClick={close}>{t.cancel}</button>
           <button type="submit" className="btn primary">{t.save}</button>
         </div>

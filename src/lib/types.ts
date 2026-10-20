@@ -27,6 +27,8 @@ export interface Habit {
   freq?: Frequency;
   quit?: boolean;
   goal?: string | null;
+  /** Daily reminder time, "HH:MM". */
+  remind?: string;
 }
 
 export interface Goal {

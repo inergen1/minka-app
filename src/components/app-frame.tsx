@@ -1,5 +1,8 @@
 "use client";
 import { useEffect, useSyncExternalStore } from "react";
+import { key } from "@/lib/dates";
+import { dueReminders } from "@/lib/habits";
+import { DICT } from "@/lib/i18n";
 import { useT } from "@/lib/use-t";
 import { useMinka, useUI } from "@/store/minka";
 import { QuickAdd } from "./quick-add";
@@ -54,6 +57,25 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
   }, []);
+  useEffect(() => {
+    if (!started || !("Notification" in window)) return;
+    // Reminders fire while the app is open (no push server; data is local).
+    const fired = new Set<string>();
+    const tick = async () => {
+      if (Notification.permission !== "granted") return;
+      const { habits, logs, lang } = useMinka.getState();
+      const now = new Date();
+      for (const h of dueReminders(habits, logs, now, fired)) {
+        fired.add(h.id + key(now));
+        const body = h.name[lang] || h.name.ar, reg = await navigator.serviceWorker?.getRegistration();
+        if (reg) reg.showNotification(DICT[lang].brand, { body, tag: h.id, icon: "/icon-192.png" });
+        else new Notification(DICT[lang].brand, { body, tag: h.id, icon: "/icon-192.png" });
+      }
+    };
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, [started]);
   if (!mounted) return null;
   if (!started) return <Welcome />;
   return (

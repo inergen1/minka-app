@@ -39,3 +39,11 @@ self.addEventListener("fetch", (e) => {
   if (url.pathname.startsWith("/_next/static/") || /\.(png|svg|woff2?)$/.test(url.pathname)) e.respondWith(cacheFirst(e.request));
   else e.respondWith(networkFirst(e.request));
 });
+
+// Habit reminders: tapping one focuses an open window or opens Today.
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  e.waitUntil(
+    self.clients.matchAll({ type: "window" }).then((ws) => (ws[0] ? ws[0].focus() : self.clients.openWindow("/today"))),
+  );
+});

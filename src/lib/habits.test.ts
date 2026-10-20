@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addDays, key, weekStart } from "./dates";
-import { bestStreak, isDue, nextValue, rate, streak } from "./habits";
+import { bestStreak, dueReminders, isDue, nextValue, rate, streak } from "./habits";
 import type { Habit, Logs } from "./types";
 
 const today = new Date(2026, 9, 18); // Sunday
@@ -60,5 +60,20 @@ describe("nextValue", () => {
     const dur: Habit = { ...daily, type: "duration", target: 30 };
     expect(nextValue(dur, 0)).toBe(10);
     expect(nextValue(dur, 25)).toBe(30);
+  });
+});
+
+describe("dueReminders", () => {
+  const h: Habit = { ...daily, remind: "07:30" };
+  const at = (hh: number, mm: number) => new Date(2026, 9, 18, hh, mm);
+  it("fires within the hour after the reminder time only", () => {
+    expect(dueReminders([h], {}, at(7, 29), new Set())).toHaveLength(0);
+    expect(dueReminders([h], {}, at(7, 30), new Set())).toHaveLength(1);
+    expect(dueReminders([h], {}, at(8, 30), new Set())).toHaveLength(0);
+  });
+  it("skips habits already done, already reminded, or not due today", () => {
+    expect(dueReminders([h], logsFor("h", [0]), at(7, 45), new Set())).toHaveLength(0);
+    expect(dueReminders([h], {}, at(7, 45), new Set(["h" + key(today)]))).toHaveLength(0);
+    expect(dueReminders([{ ...tueFri, remind: "07:30" }], {}, at(7, 45), new Set())).toHaveLength(0);
   });
 });

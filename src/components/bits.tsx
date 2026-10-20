@@ -89,11 +89,12 @@ export function HabitRow({ habit: h }: { habit: Habit }) {
 }
 
 export function TaskRow({ task: x }: { task: Task }) {
-  const { L, lang } = useT();
+  const { t, L, lang } = useT();
   const goals = useMinka((s) => s.goals);
   const areas = useMinka((s) => s.areas);
   const blocks = useMinka((s) => s.blocks);
   const toggle = useMinka((s) => s.toggleTask);
+  const edit = useUI((s) => s.openQuickAdd);
   const g = goals.find((y) => y.id === x.goal);
   const a = taskArea(x, goals);
   const sch = blocks.find((b) => b.task === x.id);
@@ -102,7 +103,7 @@ export function TaskRow({ task: x }: { task: Task }) {
       <button className={`cbox${x.done ? " on" : ""}`} onClick={() => toggle(x.id)} aria-pressed={x.done} aria-label={L(x.title)}>
         {x.done && <Icon name="check" />}
       </button>
-      <div style={{ minWidth: 0 }}>
+      <div style={{ minWidth: 0, flex: 1 }}>
         <div className="task-title">{L(x.title)}</div>
         <div className="task-meta">
           <span className="dot" />
@@ -110,6 +111,7 @@ export function TaskRow({ task: x }: { task: Task }) {
           {sch && <> · <span className="num">{sch.date === key(today()) ? "" : sch.date + " "}{time(lang, sch.s)}</span></>}
         </div>
       </div>
+      <button className="icon-btn task-edit" onClick={() => edit("task", x.id)} aria-label={t.edit}><Icon name="pencil" /></button>
     </div>
   );
 }
