@@ -14,6 +14,51 @@ const H0 = 5, H1 = 24, HP = 48;
 type CalView = "day" | "week" | "month" | "list" | "kanban";
 type Filter = "all" | "habits" | "goals" | "tasks";
 
+// ---------- New Event Popover (click empty slot) ----------
+function NewEventPopover({ date, hour, x, y, onClose }: { date: string; hour: number; x: number; y: number; onClose: () => void }) {
+  const { t, lang } = useT();
+  const { addTask, schedule } = useMinka();
+  const toast = useUI((s) => s.showToast);
+  const [title, setTitle] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", down);
+    return () => document.removeEventListener("keydown", down);
+  }, [onClose]);
+
+  const submit = () => {
+    const v = title.trim();
+    if (!v) { onClose(); return; }
+    const id = addTask({ title: { ar: v, en: v }, done: false });
+    schedule(id, date, hour);
+    toast(`${t.scheduled} · ${time(lang, hour)}`);
+    onClose();
+  };
+
+  const top = Math.min(y, (typeof window !== "undefined" ? window.innerHeight : 600) - 140);
+  const left = Math.min(x, (typeof window !== "undefined" ? window.innerWidth : 800) - 260);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="new-event-pop" style={{ top, left }} onClick={(e) => e.stopPropagation()}>
+        <div className="new-event-time num">{time(lang, hour)}</div>
+        <input ref={inputRef} className="new-event-input" value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") onClose(); }}
+          placeholder={t.phTask} />
+        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+          <button className="btn primary small" style={{ flex: 1 }} onClick={submit}><Icon name="plus" />{t.add}</button>
+          <button className="btn ghost small" onClick={onClose}><Icon name="x" /></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Event detail modal ----------
 function EventModal({ block, onClose }: { block: Block; onClose: () => void }) {
   const { t, L, lang } = useT();
@@ -209,7 +254,7 @@ function KanbanView({ filter }: { filter: Filter }) {
 // ---------- Main CalendarView ----------
 export function CalendarView() {
   const { t, L, lang } = useT();
-  const { tasks, goals, habits, blocks, schedule, unschedule, moveBlock, toggleTask } = useMinka();
+  const { tasks, goals, habits, blocks, schedule, unschedule, moveBlock, toggleTask, addTask } = useMinka();
   const toast = useUI((s) => s.showToast);
   const [view, setView] = useState<CalView>("week");
   const [offset, setOffset] = useState(0);
@@ -218,6 +263,7 @@ export function CalendarView() {
   const [selBlock, setSelBlock] = useState<Block | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [draggingBlock, setDraggingBlock] = useState<string | null>(null);
+  const [clickSlot, setClickSlot] = useState<{ date: string; hour: number; x: number; y: number } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const d0 = today();
 
@@ -304,7 +350,11 @@ export function CalendarView() {
           return (
             <div key={k} className={`day-col${isT ? " is-today" : ""}${pick ? " picking" : ""}${over === k ? " drop" : ""}`}
               style={{ height: (H1 - H0) * HP }}
-              onClick={(e) => pick && !(e.target as HTMLElement).closest(".blk") && place(pick, k, hourAt(e))}
+              onClick={(e) => {
+                if ((e.target as HTMLElement).closest(".blk")) return;
+                if (pick) { place(pick, k, hourAt(e)); return; }
+                setClickSlot({ date: k, hour: hourAt(e), x: e.clientX, y: e.clientY });
+              }}
               onDragOver={(e) => { e.preventDefault(); setOver(k); }}
               onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(null); }}
               onDrop={(e) => {
@@ -447,6 +497,7 @@ export function CalendarView() {
       )}
 
       {selBlock && <EventModal block={selBlock} onClose={() => setSelBlock(null)} />}
+      {clickSlot && <NewEventPopover {...clickSlot} onClose={() => setClickSlot(null)} />}
     </>
   );
 }
