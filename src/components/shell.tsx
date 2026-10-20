@@ -83,18 +83,43 @@ function Toggles({ compact }: { compact?: boolean }) {
 export function Shell({ children }: { children: React.ReactNode }) {
   const { t, lang } = useT();
   const path = usePathname();
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("sidebar-collapsed") === "1";
+  });
+
+  const toggleCollapsed = () => {
+    setCollapsed((c) => {
+      const next = !c;
+      localStorage.setItem("sidebar-collapsed", next ? "1" : "0");
+      return next;
+    });
+  };
+
   const nav = NAV.map(([k, href, icon]) => (
-    <Link key={k} href={href} aria-current={path.startsWith(href) ? "page" : undefined}>
+    <Link key={k} href={href} aria-current={path.startsWith(href) ? "page" : undefined} title={collapsed ? t.nav[k] : undefined}>
       <Icon name={icon} /><span>{t.nav[k]}</span>
     </Link>
   ));
   const mark = <div className="brand-mark">{lang === "ar" ? "م" : "M"}</div>;
+  const collapseIcon = lang === "ar"
+    ? (collapsed ? "chevron-left" : "chevron-right")
+    : (collapsed ? "chevron-right" : "chevron-left");
+
   return (
-    <div className="app">
-      <aside className="side">
-        <div className="brand">{mark}<div><div className="brand-name">{t.brand}</div><div className="brand-sub">{t.tagline}</div></div></div>
+    <div className={`app${collapsed ? " side-collapsed" : ""}`}>
+      <aside className={`side${collapsed ? " collapsed" : ""}`}>
+        <div className="brand">
+          {mark}
+          <div className="brand-text"><div className="brand-name">{t.brand}</div><div className="brand-sub">{t.tagline}</div></div>
+        </div>
         <nav className="nav">{nav}</nav>
-        <div className="side-foot"><Toggles /></div>
+        <div className="side-foot">
+          <Toggles compact={collapsed} />
+          <button className="side-collapse-btn" onClick={toggleCollapsed} aria-label="Toggle sidebar">
+            <Icon name={collapseIcon} />
+          </button>
+        </div>
       </aside>
       <div style={{ minWidth: 0 }}>
         <header className="topbar">
