@@ -516,7 +516,7 @@ a{color:inherit;text-decoration:none}
 .kan-col{background:var(--surface-2);border-radius:14px;padding:12px;min-height:200px}
 .kan-col.today{background:color-mix(in srgb,var(--accent) 6%,var(--surface-2))}
 .kan-col-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:13px;font-weight:700;color:var(--ink-2);padding:0 2px}
-.kan-card{background:var(--surface);border-radius:10px;padding:10px 12px;margin-bottom:8px;border-inline-start:3px solid var(--c);cursor:grab;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.kan-card{background:color-mix(in srgb,var(--c) 6%,var(--surface));border-radius:10px;padding:10px 12px;margin-bottom:8px;border:1px solid color-mix(in srgb,var(--c) 28%,var(--line));cursor:grab;box-shadow:0 1px 4px rgba(0,0,0,.06)}
 .kan-card:active{cursor:grabbing}
 .kan-card.habit-card{display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:default}
 .goal-kan-card{cursor:grab}

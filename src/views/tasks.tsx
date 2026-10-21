@@ -46,14 +46,14 @@ function TableView({ tasks }: { tasks: Task[] }) {
             const area = areas.find((a) => a.id === areaId);
             const overdue = !task.done && task.due && task.due < d;
             return (
-              <tr key={task.id} className={task.done ? "row-done" : overdue ? "row-overdue" : ""} style={cvar(areaId)}>
+              <tr key={task.id} className={task.done ? "row-done" : overdue ? "row-overdue" : ""} style={cvar(areaId ?? "")}>
                 <td>
                   <button className={`task-check${task.done ? " checked" : ""}`} onClick={() => toggleTask(task.id)} aria-label={task.done ? "Mark undone" : "Mark done"}>
                     {task.done && <Icon name="check" />}
                   </button>
                 </td>
                 <td className="task-title-cell"><span>{L(task.title)}</span></td>
-                <td>{area ? <span className="tag" style={cvar(areaId)}>{L(area.name)}</span> : "—"}</td>
+                <td>{area ? <span className="tag" style={cvar(areaId ?? "")}>{L(area.name)}</span> : "—"}</td>
                 <td className="task-goal-cell">{goal ? <span className="small">{L(goal.title)}</span> : "—"}</td>
                 <td className={`task-due-cell num small${overdue ? " overdue-text" : ""}`}>
                   {task.due ? task.due : "—"}
@@ -143,10 +143,10 @@ function BoardView({ tasks }: { tasks: Task[] }) {
           const areaId = task.area ?? goals.find((g) => g.id === task.goal)?.area;
           const area = areas.find((a) => a.id === areaId);
           return (
-            <div key={task.id} className="board-card" style={cvar(areaId)}>
+            <div key={task.id} className="board-card" style={cvar(areaId ?? "")}>
               <div className="board-card-title">{L(task.title)}</div>
               <div className="board-card-foot">
-                {area && <span className="tag" style={cvar(areaId)}>{L(area.name)}</span>}
+                {area && <span className="tag" style={cvar(areaId ?? "")}>{L(area.name)}</span>}
                 {task.due && <span className="board-card-due small">{task.due}</span>}
                 <button className={`task-check small${task.done ? " checked" : ""}`} onClick={() => toggleTask(task.id)}>
                   {task.done && <Icon name="check" />}
