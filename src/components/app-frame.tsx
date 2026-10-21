@@ -1,10 +1,12 @@
 "use client";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { key } from "@/lib/dates";
 import { dueReminders } from "@/lib/habits";
 import { DICT } from "@/lib/i18n";
 import { useT } from "@/lib/use-t";
 import { useMinka, useUI } from "@/store/minka";
+import { supabase } from "@/lib/supabase";
+import { loadFromCloud, scheduleSave } from "@/lib/sync";
 import { QuickAdd } from "./quick-add";
 import { Shell } from "./shell";
 
@@ -47,6 +49,8 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
   const lang = useMinka((s) => s.lang);
   const theme = useMinka((s) => s.theme);
   const qa = useUI((s) => s.quickAdd);
+  const loggedIn = useRef(false);
+
   useEffect(() => {
     const r = document.documentElement;
     r.lang = lang;
@@ -54,6 +58,24 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     if (theme) r.setAttribute("data-theme", theme);
     else r.removeAttribute("data-theme");
   }, [lang, theme]);
+
+  // Auth-aware sync: load on sign-in, save on every mutation.
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) { loggedIn.current = true; loadFromCloud(); }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") { loggedIn.current = true; loadFromCloud(); }
+      if (event === "SIGNED_OUT") { loggedIn.current = false; }
+    });
+
+    const unsub = useMinka.subscribe(() => {
+      if (loggedIn.current) scheduleSave();
+    });
+
+    return () => { subscription.unsubscribe(); unsub(); };
+  }, []);
   useEffect(() => {
     if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
   }, []);
