@@ -116,7 +116,7 @@ function EventModal({ block, onClose }: { block: Block; onClose: () => void }) {
 }
 
 // ---------- List view ----------
-function ListView({ filter, offset }: { filter: Filter; offset: number }) {
+function ListView({ filter, offset, areaFilter }: { filter: Filter; offset: number; areaFilter: string }) {
   const { t, L, lang } = useT();
   const { tasks, goals, habits, blocks, toggleTask } = useMinka();
   const d0 = today();
@@ -129,12 +129,17 @@ function ListView({ filter, offset }: { filter: Filter; offset: number }) {
       {days.map((d) => {
         const k = key(d);
         const isT = +d === +d0;
-        const dayBlocks = (filter === "habits" ? [] : blocksOn(blocks, d));
-        const dueHabits = filter !== "tasks" && filter !== "goals"
-          ? habits.filter((h) => isDue(h, d))
+        let dayBlocks = filter === "habits" ? [] : blocksOn(blocks, d);
+        if (filter === "tasks") dayBlocks = dayBlocks.filter((b) => !!b.task);
+        if (areaFilter !== "all") dayBlocks = dayBlocks.filter((b) => b.area === areaFilter);
+        const dueHabits = (filter !== "tasks" && filter !== "goals")
+          ? habits.filter((h) => isDue(h, d) && (areaFilter === "all" || h.area === areaFilter))
+          : [];
+        const dueTodayTasks = (filter !== "habits" && filter !== "goals")
+          ? tasks.filter((tx) => !tx.done && tx.due === k && !blocks.some((b) => b.task === tx.id) && (areaFilter === "all" || taskArea(tx, goals) === areaFilter))
           : [];
 
-        if (dayBlocks.length === 0 && dueHabits.length === 0) return null;
+        if (dayBlocks.length === 0 && dueHabits.length === 0 && dueTodayTasks.length === 0) return null;
         return (
           <div key={k} className="cal-list-day">
             <div className={`list-day-hd${isT ? " is-today" : ""}`}>
@@ -150,6 +155,18 @@ function ListView({ filter, offset }: { filter: Filter; offset: number }) {
                 ))}
               </div>
             )}
+            {dueTodayTasks.map((tx) => (
+              <div key={tx.id} className="list-item list-item-due" style={cvar(taskArea(tx, goals))}>
+                <div className="list-item-color" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="list-item-title">{L(tx.title)}</div>
+                  <div className="list-item-meta num">{t.dueChip}</div>
+                </div>
+                <button className={`list-done-btn${tx.done ? " on" : ""}`} onClick={() => toggleTask(tx.id)} aria-label={tx.done ? t.markUndone : t.markDone}>
+                  {tx.done ? <Icon name="check-circle" /> : <Icon name="circle" />}
+                </button>
+              </div>
+            ))}
             {dayBlocks.map((b) => {
               const task = b.task ? tasks.find((x) => x.id === b.task) : null;
               return (
@@ -175,7 +192,7 @@ function ListView({ filter, offset }: { filter: Filter; offset: number }) {
 }
 
 // ---------- Kanban view ----------
-function KanbanView({ filter }: { filter: Filter }) {
+function KanbanView({ filter, areaFilter }: { filter: Filter; areaFilter: string }) {
   const { t, L, lang } = useT();
   const { tasks, goals, habits, blocks, toggleTask, schedule, unschedule } = useMinka();
   const d0 = today(), k0 = key(d0);
@@ -185,12 +202,12 @@ function KanbanView({ filter }: { filter: Filter }) {
   const todayBlocks = blocksOn(blocks, d0);
   const scheduledTodayIds = new Set(todayBlocks.map((b) => b.task).filter(Boolean));
 
-  const allTasks = filter === "habits" || filter === "goals" ? [] : tasks;
+  const allTasks = filter === "habits" || filter === "goals" ? [] : tasks.filter((x) => areaFilter === "all" || taskArea(x, goals) === areaFilter);
   const backlog = allTasks.filter((x) => !x.done && !scheduledTodayIds.has(x.id));
   const todayTasks = allTasks.filter((x) => !x.done && scheduledTodayIds.has(x.id));
   const doneTasks = allTasks.filter((x) => x.done).slice(0, 10);
   const todayHabits = filter !== "tasks" && filter !== "goals"
-    ? habits.filter((h) => isDue(h, d0))
+    ? habits.filter((h) => isDue(h, d0) && (areaFilter === "all" || h.area === areaFilter))
     : [];
 
   const handleDrop = (e: React.DragEvent, col: "today" | "backlog") => {
@@ -254,14 +271,16 @@ function KanbanView({ filter }: { filter: Filter }) {
 // ---------- Main CalendarView ----------
 export function CalendarView() {
   const { t, L, lang } = useT();
-  const { tasks, goals, habits, blocks, schedule, unschedule, moveBlock, toggleTask, addTask } = useMinka();
+  const { tasks, goals, habits, blocks, areas, schedule, unschedule, moveBlock, toggleTask, addTask } = useMinka();
   const toast = useUI((s) => s.showToast);
+  const openQA = useUI((s) => s.openQuickAdd);
   const [view, setView] = useState<CalView>("week");
   const [offset, setOffset] = useState(0);
   const [pick, setPick] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const [selBlock, setSelBlock] = useState<Block | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
+  const [areaFilter, setAreaFilter] = useState<string>("all");
   const [draggingBlock, setDraggingBlock] = useState<string | null>(null);
   const [clickSlot, setClickSlot] = useState<{ date: string; hour: number; x: number; y: number } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -314,15 +333,31 @@ export function CalendarView() {
 
   // Filter blocks for display
   const visibleBlocks = (d: Date) => {
-    const bl = blocksOn(blocks, d);
-    if (filter === "all") return bl;
-    if (filter === "habits") return [];
-    if (filter === "tasks") return bl.filter((b) => !!b.task);
-    if (filter === "goals") return bl.filter((b) => {
+    let bl = blocksOn(blocks, d);
+    if (filter === "habits") bl = [];
+    else if (filter === "tasks") bl = bl.filter((b) => !!b.task);
+    else if (filter === "goals") bl = bl.filter((b) => {
       const task = b.task ? tasks.find((x) => x.id === b.task) : null;
       return task?.goal != null;
     });
+    if (areaFilter !== "all") bl = bl.filter((b) => b.area === areaFilter);
     return bl;
+  };
+
+  // Tasks with due date on this day that have no scheduled block
+  const dueTasks = (d: Date) => {
+    if (filter === "habits" || filter === "goals") return [];
+    const k = key(d);
+    return tasks.filter((tx) =>
+      !tx.done && tx.due === k && !blocks.some((b) => b.task === tx.id) &&
+      (areaFilter === "all" || taskArea(tx, goals) === areaFilter)
+    );
+  };
+
+  // Habits due on a day (for display in headers)
+  const dayHabits = (d: Date) => {
+    if (filter === "tasks" || filter === "goals") return [];
+    return habits.filter((h) => isDue(h, d) && (areaFilter === "all" || h.area === areaFilter));
   };
 
   const unsched = tasks.filter((x) => !x.done && !blocks.some((b) => b.task === x.id));
@@ -333,16 +368,31 @@ export function CalendarView() {
     <div className="cal-scroll" ref={scroller}>
       <div className={`cal-grid${ds.length === 1 ? " single" : ""}`} style={{ "--days": ds.length } as React.CSSProperties}>
         <div className="cal-hd corner" />
-        {ds.map((d) => (
-          <div key={key(d)} className={`cal-hd${+d === +d0 ? " is-today" : ""}`}>
-            <div className="dn">{fmt(lang, d, { weekday: ds.length === 1 ? "long" : "short" })}</div>
-            <div className="dd num"><span>{fmt(lang, d, { day: "numeric" })}</span></div>
-            <div className="hd num">{hijriDay(d)} {hijri(lang, d, { month: "short" })}</div>
-            {filter !== "tasks" && filter !== "goals" && (
-              <span className="hb num">{t.habitsDue(num(lang, habits.filter((h) => isDue(h, d)).length))}</span>
-            )}
-          </div>
-        ))}
+        {ds.map((d) => {
+          const k = key(d);
+          const habs = dayHabits(d);
+          const due = dueTasks(d);
+          return (
+            <div key={k} className={`cal-hd${+d === +d0 ? " is-today" : ""}`}>
+              <div className="dn">{fmt(lang, d, { weekday: ds.length === 1 ? "long" : "short" })}</div>
+              <div className="dd num"><span>{fmt(lang, d, { day: "numeric" })}</span></div>
+              <div className="hd num">{hijriDay(d)} {hijri(lang, d, { month: "short" })}</div>
+              {habs.length > 0 && (
+                filter === "habits"
+                  ? <div className="hd-chips">{habs.map((h) => <span key={h.id} className="hd-chip" style={{ background: `color-mix(in srgb,var(--c-${h.area}) 16%,transparent)`, color: `var(--c-${h.area})` }}>{L(h.name)}</span>)}</div>
+                  : <span className="hb num">{t.habitsDue(num(lang, habs.length))}</span>
+              )}
+              {due.length > 0 && (
+                <div className="hd-due-chips">{due.map((tx) => (
+                  <button key={tx.id} className="hd-due-chip" style={{ background: `color-mix(in srgb,var(--c-${taskArea(tx, goals)}) 16%,transparent)`, color: `var(--c-${taskArea(tx, goals)})` }}
+                    onClick={(e) => { e.stopPropagation(); openQA("task", tx.id); }}>
+                    {L(tx.title)}
+                  </button>
+                ))}</div>
+              )}
+            </div>
+          );
+        })}
         <div className="hours">{Array.from({ length: H1 - H0 }, (_, i) => <div key={i} className="hour-l">{i === 0 ? "" : time(lang, H0 + i)}</div>)}</div>
         {ds.map((d) => {
           const k = key(d), isT = +d === +d0;
@@ -456,7 +506,7 @@ export function CalendarView() {
         </div>
       </div>
 
-      {/* Filter chips */}
+      {/* Filter bar: type chips + area dropdown + add button */}
       <div className="cal-filters">
         {(["all", "habits", "goals", "tasks"] as const).map((f) => {
           const labels = { all: t.filterAll, habits: t.filterHabits, goals: t.filterGoals, tasks: t.filterTasks };
@@ -466,6 +516,11 @@ export function CalendarView() {
             </button>
           );
         })}
+        <select className="area-select" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} aria-label={t.area}>
+          <option value="all">{t.allAreas}</option>
+          {areas.map((a) => <option key={a.id} value={a.id}>{L(a.name)}</option>)}
+        </select>
+        <button className="btn primary small cal-add-btn" onClick={() => openQA("task")}><Icon name="plus" />{t.add}</button>
       </div>
 
       {pickT && (
@@ -476,7 +531,7 @@ export function CalendarView() {
       {/* Content */}
       {view === "list" ? (
         <div className="cal-list-layout">
-          <ListView filter={filter} offset={offset} />
+          <ListView filter={filter} offset={offset} areaFilter={areaFilter} />
           <aside className="panel">
             <div className="panel-head"><h2>{t.unsched}</h2><span className="muted small num">{num(lang, unsched.length)}</span></div>
             <p className="small muted" style={{ marginBottom: 12 }}>{t.dragHint}</p>
@@ -484,7 +539,7 @@ export function CalendarView() {
           </aside>
         </div>
       ) : view === "kanban" ? (
-        <KanbanView filter={filter} />
+        <KanbanView filter={filter} areaFilter={areaFilter} />
       ) : (
         <div className="cal-layout">
           <section className="panel cal">{days ? timeGrid(days) : monthGrid()}</section>

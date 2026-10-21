@@ -171,11 +171,12 @@ function BoardView({ tasks }: { tasks: Task[] }) {
 
 // ── Main TasksView ───────────────────────────────────────────
 export function TasksView() {
-  const { t, lang } = useT();
-  const tasks = useMinka((s) => s.tasks);
+  const { t, L, lang } = useT();
+  const { tasks, areas, goals } = useMinka();
   const openAdd = useUI((s) => s.openQuickAdd);
   const [view, setView] = useState<View>("table");
   const [filter, setFilter] = useState<"all" | "pending" | "done">("all");
+  const [areaFilter, setAreaFilter] = useState<string>("all");
   const stats = useTaskStats();
   const d = today().toISOString().slice(0, 10);
 
@@ -183,6 +184,10 @@ export function TasksView() {
     if (filter === "pending") return !task.done;
     if (filter === "done") return task.done;
     return true;
+  }).filter((task) => {
+    if (areaFilter === "all") return true;
+    const aId = task.area ?? goals.find((g) => g.id === task.goal)?.area;
+    return aId === areaFilter;
   });
 
   const ar = lang === "ar";
@@ -209,13 +214,17 @@ export function TasksView() {
       <div className="view-bar">
         <div className="segmented">
           {(["table", "list", "board"] as View[]).map((v) => (
-            <button key={v} className={view === v ? "active" : ""} onClick={() => setView(v)}>
-              <Icon name={v === "table" ? "table" : v === "list" ? "list" : "layout-dashboard"} />
+            <button key={v} aria-pressed={view === v} onClick={() => setView(v)}>
+              <Icon name={v === "table" ? "table-2" : v === "list" ? "list" : "layout-dashboard"} />
               <span>{v === "table" ? (ar ? "جدول" : "Table") : v === "list" ? (ar ? "قائمة" : "List") : (ar ? "لوحة" : "Board")}</span>
             </button>
           ))}
         </div>
-        <div className="filter-chips">
+        <div className="tasks-filters">
+          <select className="area-select" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} aria-label={t.area}>
+            <option value="all">{t.allAreas}</option>
+            {areas.map((a) => <option key={a.id} value={a.id}>{L(a.name)}</option>)}
+          </select>
           {(["all", "pending", "done"] as const).map((f) => (
             <button key={f} className={`chip-btn${filter === f ? " active" : ""}`} onClick={() => setFilter(f)}>
               {f === "all" ? (ar ? "الكل" : "All") : f === "pending" ? (ar ? "معلق" : "Pending") : (ar ? "منجز" : "Done")}

@@ -18,7 +18,7 @@ export function QuickAdd() {
   const open = useUI((s) => s.openQuickAdd);
   const close = useUI((s) => s.closeQuickAdd);
   const toast = useUI((s) => s.showToast);
-  const { areas, habits, goals, tasks, addHabit, addGoal, addTask, updateHabit, updateGoal, updateTask, removeTask } = useMinka();
+  const { areas, habits, goals, tasks, blocks, addHabit, addGoal, addTask, updateHabit, updateGoal, updateTask, removeTask, schedule, unschedule } = useMinka();
   const eh = tab === "habit" ? habits.find((h) => h.id === editId) : undefined;
   const eg = tab === "goal" ? goals.find((g) => g.id === editId) : undefined;
   const et = tab === "task" ? tasks.find((x) => x.id === editId) : undefined;
@@ -75,8 +75,15 @@ export function QuickAdd() {
     } else {
       const goal = s("goal") || null;
       const x = { goal, area: goal ? undefined : s("area"), title, due: s("due") || undefined };
-      if (et) updateTask(et.id, x);
-      else addTask({ ...x, done: false });
+      const applySchedule = (id: string) => {
+        const sd = s("schedDate");
+        if (!sd) return;
+        const st = s("schedTime") || "09:00";
+        const [hh, mm] = st.split(":").map(Number);
+        schedule(id, sd, hh + mm / 60);
+      };
+      if (et) { updateTask(et.id, x); applySchedule(et.id); }
+      else { const newId = addTask({ ...x, done: false }); applySchedule(newId); }
     }
     close();
     toast(note);
@@ -142,6 +149,11 @@ export function QuickAdd() {
             <div className="field"><label htmlFor="f-goal">{t.linkGoal}</label><select id="f-goal" name="goal" defaultValue={et?.goal ?? ""}>{goalOpts}</select></div>
             {areaSel}
             <div className="field"><label htmlFor="f-due">{t.dueDate}</label><input id="f-due" name="due" type="date" defaultValue={et ? et.due ?? "" : key(today())} /></div>
+            {/* Scheduling — optional */}
+            <div className="field"><label htmlFor="f-sched-date">{t.schedOn} <span className="field-optional">{t.none === "بدون" ? "(اختياري)" : "(optional)"}</span></label>
+              <input id="f-sched-date" name="schedDate" type="date" defaultValue={et ? (blocks.find((b) => b.task === et.id)?.date ?? "") : ""} /></div>
+            <div className="field"><label htmlFor="f-sched-time">{t.schedTime}</label>
+              <input id="f-sched-time" name="schedTime" type="time" defaultValue={(() => { const b = et ? blocks.find((x) => x.task === et.id) : null; if (!b) return "09:00"; const h = Math.floor(b.s), m = Math.round((b.s % 1) * 60); return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`; })()} /></div>
           </>}
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
