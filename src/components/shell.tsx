@@ -1,10 +1,12 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/use-t";
 import { useMinka } from "@/store/minka";
 import { Icon } from "./icon";
+import { supabase } from "@/lib/supabase";
+import type { User } from "@supabase/supabase-js";
 
 const NAV = [
   ["today", "/today", "sun"],
@@ -80,6 +82,41 @@ function Toggles({ compact }: { compact?: boolean }) {
   );
 }
 
+function UserArea({ collapsed }: { collapsed: boolean }) {
+  const { t, lang } = useT();
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const ar = lang === "ar";
+
+  if (user) {
+    return (
+      <div className="side-user" title={user.email}>
+        <Icon name="user-circle" />
+        <span className="side-user-email">{user.email}</span>
+        <button className="side-user-out" aria-label={ar ? "تسجيل خروج" : "Sign out"}
+          onClick={async () => { await supabase.auth.signOut(); setUser(null); }}>
+          <Icon name="log-out" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button className="side-auth-btn" onClick={() => router.push("/auth")}>
+      <Icon name="log-in" /><span>{ar ? "تسجيل الدخول" : "Sign in"}</span>
+    </button>
+  );
+}
+
 export function Shell({ children }: { children: React.ReactNode }) {
   const { t, lang } = useT();
   const path = usePathname();
@@ -115,6 +152,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
         <nav className="nav">{nav}</nav>
         <div className="side-foot">
+          <UserArea collapsed={collapsed} />
           <Toggles compact={collapsed} />
           <button className="side-collapse-btn" onClick={toggleCollapsed} aria-label="Toggle sidebar">
             <Icon name={collapseIcon} />
