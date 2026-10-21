@@ -3,6 +3,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useState } from "react";
 import { AreaIcon, Bar, FlameCount, HabitButton } from "@/components/bits";
 import { Icon } from "@/components/icon";
+import { StatCard } from "@/components/stat-card";
 import { addDays, DAY, fmt, key, num, weekStart } from "@/lib/dates";
 import { progress } from "@/lib/goals";
 import { bestStreak, isDone, isDue, rate, streak, target, totalDone, value } from "@/lib/habits";
@@ -109,17 +110,36 @@ function HabitDetail({ habit: h }: { habit: Habit }) {
 }
 
 export function HabitsView() {
-  const { t } = useT();
-  const habits = useMinka((s) => s.habits);
+  const { t, lang } = useT();
+  const { habits, logs } = useMinka();
   const sel = useUI((s) => s.habitSel);
   const openQA = useUI((s) => s.openQuickAdd);
   const h = habits.find((x) => x.id === sel) ?? habits[0];
+  const d = today();
+  const ar = lang === "ar";
+
+  // Stats
+  const active = habits.length;
+  const todayDue = habits.filter((x) => isDue(x, d));
+  const todayDoneCount = todayDue.filter((x) => isDone(logs, x, d)).length;
+  const todayRate = todayDue.length ? Math.round((todayDoneCount / todayDue.length) * 100) : 0;
+  const topStreak = habits.length ? Math.max(...habits.map((x) => streak(logs, x, d))) : 0;
+  const topBest = habits.length ? Math.max(...habits.map((x) => bestStreak(logs, x, d))) : 0;
+
   return (
     <>
       <header className="page-head">
         <div><h1 className="page-title">{t.nav.habits}</h1><p className="page-sub">{t.habitsSub}</p></div>
         <button className="btn primary" onClick={() => openQA("habit")}><Icon name="plus" />{t.habit}</button>
       </header>
+
+      <div className="stat-cards">
+        <StatCard icon="repeat" label={ar ? "العادات النشطة" : "Active habits"} value={active} color="var(--accent)" />
+        <StatCard icon="circle-check-big" label={ar ? "إنجاز اليوم" : "Today's rate"} value={todayRate} sub="%" color="var(--c-faith)" />
+        <StatCard icon="flame" label={ar ? "أطول سلسلة حالية" : "Top streak"} value={topStreak} color="var(--c-health)" />
+        <StatCard icon="trophy" label={ar ? "أطول سلسلة على الإطلاق" : "Best streak ever"} value={topBest} color="var(--c-growth)" />
+      </div>
+
       {h ? (
         <div className="habits-layout">
           <section className="panel"><div className="h-list">{habits.map((x) => <HabitListItem key={x.id} habit={x} selected={x.id === h.id} />)}</div></section>

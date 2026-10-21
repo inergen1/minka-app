@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { TaskRow } from "@/components/bits";
 import { Icon } from "@/components/icon";
+import { StatCard } from "@/components/stat-card";
 import { fmt, num, parse } from "@/lib/dates";
 import { progress } from "@/lib/goals";
 import { cvar, pct, today, useT } from "@/lib/use-t";
@@ -152,10 +153,51 @@ function GoalCard({ goal: g }: { goal: Goal }) {
   );
 }
 
-function GoalListView({ goals }: { goals: Goal[] }) {
+// ---------- Table view (replaces list) ----------
+function GoalTableView({ goals: gs }: { goals: Goal[] }) {
+  const { t, L, lang } = useT();
+  const { goals: allGoals, tasks, areas, updateMetric, removeGoal } = useMinka();
+  const edit = useUI((s) => s.openQuickAdd);
+  const d = today();
   return (
-    <div className="goals-list-view">
-      {goals.map((g) => <GoalCard key={g.id} goal={g} />)}
+    <div className="tasks-table-wrap">
+      <table className="tasks-table">
+        <thead>
+          <tr>
+            <th>{lang === "ar" ? "الهدف" : "Goal"}</th>
+            <th>{lang === "ar" ? "الجانب" : "Area"}</th>
+            <th>{lang === "ar" ? "المدى" : "Horizon"}</th>
+            <th>{lang === "ar" ? "الاستحقاق" : "Due"}</th>
+            <th>{lang === "ar" ? "التقدم" : "Progress"}</th>
+            <th style={{ width: 80 }} />
+          </tr>
+        </thead>
+        <tbody>
+          {gs.map((g) => {
+            const area = areas.find((a) => a.id === g.area);
+            const p = progress(g, allGoals, tasks);
+            const overdue = parse(g.due) < d;
+            return (
+              <tr key={g.id} className={overdue ? "row-overdue" : ""} style={cvar(g.area)}>
+                <td className="task-title-cell"><span className="dot" /><span>{L(g.title)}</span></td>
+                <td>{area && <span className="tag" style={cvar(g.area)}>{L(area.name)}</span>}</td>
+                <td><span className="chip-badge">{t.horizon[g.horizon]}</span></td>
+                <td className={`num small${overdue ? " overdue-text" : ""}`}>{g.due}</td>
+                <td>
+                  <div className="goal-prog-sm">
+                    <div className="bar"><span style={{ width: `${pct(p)}%` }} /></div>
+                    <b className="num">{pct(p)}%</b>
+                  </div>
+                </td>
+                <td>
+                  <button className="icon-btn small" onClick={() => edit("goal", g.id)}><Icon name="pencil" /></button>
+                  <button className="icon-btn small danger" onClick={() => removeGoal(g.id)}><Icon name="trash-2" /></button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -206,18 +248,35 @@ function GoalKanban({ goals: filtered }: { goals: Goal[] }) {
 
 // ---------- GoalsView ----------
 export function GoalsView() {
-  const { t, L } = useT();
-  const { goals, areas } = useMinka();
+  const { t, L, lang } = useT();
+  const { goals, areas, tasks } = useMinka();
   const openQA = useUI((s) => s.openQuickAdd);
-  const [view, setView] = useState<"tree" | "timeline" | "list" | "kanban">("tree");
+  const [view, setView] = useState<"tree" | "timeline" | "table" | "kanban">("tree");
   const [area, setArea] = useState("all");
   const gs = goals.filter((g) => !g.parent && (area === "all" || g.area === area));
+  const d = today();
+  const ar = lang === "ar";
+
+  // Stats
+  const totalGoals = goals.filter((g) => !g.parent).length;
+  const completedGoals = goals.filter((g) => !g.parent && progress(g, goals, tasks) === 100).length;
+  const overdueGoals = goals.filter((g) => !g.parent && parse(g.due) < d && progress(g, goals, tasks) < 100).length;
+  const avgPct = totalGoals ? Math.round(goals.filter((g) => !g.parent).reduce((s, g) => s + progress(g, goals, tasks), 0) / totalGoals) : 0;
+
   return (
     <>
       <header className="page-head">
         <div><h1 className="page-title">{t.nav.goals}</h1><p className="page-sub">{t.goalsSub}</p></div>
         <button className="btn primary" onClick={() => openQA("goal")}><Icon name="plus" />{t.goal}</button>
       </header>
+
+      <div className="stat-cards">
+        <StatCard icon="flag" label={ar ? "إجمالي الأهداف" : "Total goals"} value={totalGoals} color="var(--accent)" />
+        <StatCard icon="check-circle-2" label={ar ? "مكتملة" : "Completed"} value={completedGoals} color="var(--c-growth)" />
+        <StatCard icon="trending-up" label={ar ? "متوسط التقدم" : "Avg progress"} value={avgPct} sub="%" color="var(--c-work)" />
+        <StatCard icon="alarm-clock" label={ar ? "متأخرة" : "Overdue"} value={overdueGoals} color="var(--danger)" />
+      </div>
+
       <div className="toolbar">
         <div className="chips">
           <button className="chip" aria-pressed={area === "all"} onClick={() => setArea("all")}>{t.all}</button>
@@ -228,14 +287,14 @@ export function GoalsView() {
         <div className="seg" role="group">
           <button aria-pressed={view === "tree"} onClick={() => setView("tree")}>{t.tree}</button>
           <button aria-pressed={view === "timeline"} onClick={() => setView("timeline")}>{t.timeline}</button>
-          <button aria-pressed={view === "list"} onClick={() => setView("list")}>{t.goalsList}</button>
+          <button aria-pressed={view === "table"} onClick={() => setView("table")}>{ar ? "جدول" : "Table"}</button>
           <button aria-pressed={view === "kanban"} onClick={() => setView("kanban")}>{t.goalsKanban}</button>
         </div>
       </div>
       {gs.length === 0 ? <p className="empty">{t.noGoalSoon}</p>
         : view === "tree" ? <div>{gs.map((g, i) => <GoalNode key={g.id} goal={g} depth={0} defaultOpen={i < 2} />)}</div>
         : view === "timeline" ? <Gantt goals={gs} />
-        : view === "list" ? <GoalListView goals={gs} />
+        : view === "table" ? <GoalTableView goals={gs} />
         : <GoalKanban goals={gs} />}
     </>
   );

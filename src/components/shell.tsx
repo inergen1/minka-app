@@ -13,6 +13,7 @@ const NAV = [
   ["areas", "/areas", "compass"],
   ["goals", "/goals", "flag"],
   ["habits", "/habits", "repeat"],
+  ["tasks", "/tasks", "list-checks"],
   ["calendar", "/calendar", "calendar-days"],
   ["review", "/review", "clipboard-check"],
 ] as const;

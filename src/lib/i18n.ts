@@ -2,7 +2,7 @@ import type { Lang, Slot } from "./types";
 
 const ar = {
   brand: "منكا", tagline: "خطّط حياتك بوضوح",
-  nav: { today: "اليوم", areas: "جوانب الحياة", goals: "الأهداف", habits: "العادات", calendar: "المخطِّط", review: "المراجعة" },
+  nav: { today: "اليوم", areas: "جوانب الحياة", goals: "الأهداف", habits: "العادات", tasks: "المهام", calendar: "المخطِّط", review: "المراجعة" },
   morning: "صباح الخير", evening: "مساء الخير", add: "إضافة", habitsToday: "عادات اليوم",
   doneOf: (a: string, b: string) => `أنجزت ${a} من ${b}`,
   topStreak: "أطول سلسلة حالية", tasksToday: "مهام اليوم", weekRate: "التزام هذا الأسبوع", schedToday: "جدول اليوم", nextGoal: "أقرب هدف موعداً",
@@ -50,7 +50,7 @@ type Dict = typeof ar;
 
 const en: Dict = {
   brand: "Minka", tagline: "Plan your life with clarity",
-  nav: { today: "Today", areas: "Life areas", goals: "Goals", habits: "Habits", calendar: "Planner", review: "Review" },
+  nav: { today: "Today", areas: "Life areas", goals: "Goals", habits: "Habits", tasks: "Tasks", calendar: "Planner", review: "Review" },
   morning: "Good morning", evening: "Good evening", add: "Add", habitsToday: "Today’s habits",
   doneOf: (a, b) => `${a} of ${b} done`,
   topStreak: "Top active streak", tasksToday: "Today’s tasks", weekRate: "This week", schedToday: "Today’s schedule", nextGoal: "Next deadline",
